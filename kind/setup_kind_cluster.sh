@@ -22,8 +22,23 @@ if [[ ! -f "${KIND_CONFIG}" ]]; then
     exit 1
 fi
 
+# OpenEBS's node-disk-manager DaemonSet expects a /run/udev directory inside
+# each kind node. On Linux this is the host's real udev state; on macOS (or
+# any host without a real /run/udev, e.g. Docker Desktop's VM) no such path
+# exists, so `kind create cluster` fails outright trying to bind-mount it.
+# SREGym only uses OpenEBS's hostpath local storage class, which never reads
+# real udev device data, so mounting an empty stub directory in its place is
+# harmless: NDM starts, finds no devices, and hostpath provisioning is
+# unaffected either way.
+UDEV_STUB_DIR="${HOME}/.sregym/kind-udev-stub"
+mkdir -p "${UDEV_STUB_DIR}"
+
+RENDERED_KIND_CONFIG="$(mktemp)"
+trap 'rm -f "${RENDERED_KIND_CONFIG}"' EXIT
+sed "s#__UDEV_STUB_DIR__#${UDEV_STUB_DIR}#g" "${KIND_CONFIG}" > "${RENDERED_KIND_CONFIG}"
+
 echo "==> Step 1: Create Kind cluster (arch: ${ARCH})"
-kind create cluster --config "${KIND_CONFIG}"
+kind create cluster --config "${RENDERED_KIND_CONFIG}"
 
 echo "==> Step 2: Install Calico CNI"
 kubectl apply -f "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/calico.yaml"

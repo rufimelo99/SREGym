@@ -11,20 +11,20 @@ nodes:
   - role: control-plane
     image: jacksonarthurclark/aiopslab-kind-x86:latest
     extraMounts:
-      - hostPath: /run/udev
+      - hostPath: __UDEV_STUB_DIR__
         containerPath: /run/udev
   - role: worker
     image: jacksonarthurclark/aiopslab-kind-x86:latest
     extraMounts:
-      - hostPath: /run/udev
+      - hostPath: __UDEV_STUB_DIR__
         containerPath: /run/udev
   - role: worker
     image: jacksonarthurclark/aiopslab-kind-x86:latest
     extraMounts:
-      - hostPath: /run/udev
+      - hostPath: __UDEV_STUB_DIR__
         containerPath: /run/udev
   - role: worker
     image: jacksonarthurclark/aiopslab-kind-x86:latest
     extraMounts:
-      - hostPath: /run/udev
+      - hostPath: __UDEV_STUB_DIR__
         containerPath: /run/udev

@@ -30,6 +30,7 @@ from sregym.conductor.conductor import Conductor, ConductorConfig
 from sregym.conductor.conductor_api import request_shutdown, run_api
 from sregym.conductor.constants import StartProblemResult
 from sregym.conductor.problem_sets import PROBLEM_SETS
+from sregym.env_aliases import mirror_azure_openai_env_aliases
 from sregym.run_artifacts import ArtifactFinalizationError, RunArtifacts
 from sregym.service.container_runner import ContainerRunner, ExecInput
 from sregym.traces import postprocess as trace_postprocess
@@ -142,6 +143,7 @@ def _configure_model_environment(args) -> tuple[str, str]:
 
     os.environ["AGENT_MODEL_ID"] = agent_model
     os.environ["JUDGE_MODEL_ID"] = judge_model
+    mirror_azure_openai_env_aliases()
     if reasoning_effort:
         os.environ["AGENT_REASONING_EFFORT"] = reasoning_effort
     else:

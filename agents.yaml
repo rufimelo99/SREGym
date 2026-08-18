@@ -61,3 +61,9 @@ agents:
     install_script: null
     agent_version: null
     container_isolation: false
+  - name: inspectai
+    kickoff_command: python -m clients.inspectai.driver
+    kickoff_workdir: .
+    kickoff_env: null
+    install_script: install-inspectai.sh
+    agent_version: null
