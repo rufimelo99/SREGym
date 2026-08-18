@@ -1,8 +1,10 @@
+import asyncio
+
 import pytest
 from inspect_ai.model import ChatMessageAssistant, ChatMessageSystem, ChatMessageUser
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from llm_backend.inspect_ai_backend import _to_inspect_messages
+from llm_backend.inspect_ai_backend import _run_sync, _to_inspect_messages
 
 
 def test_plain_string_with_system_prompt_becomes_system_then_user():
@@ -42,3 +44,34 @@ def test_unsupported_message_type_raises():
 
     with pytest.raises(TypeError, match="Unsupported message type"):
         _to_inspect_messages([Weird()], system_prompt=None)
+
+
+async def _return_42():
+    return 42
+
+
+def test_run_sync_works_from_a_plain_sync_context():
+    assert _run_sync(_return_42) == 42
+
+
+def test_run_sync_works_from_inside_an_already_running_event_loop():
+    # This is the exact bug hit in production: inference() is called from
+    # SREGym's judge preflight, which itself runs inside inspect_ai's async
+    # solver -- i.e. inside an already-running event loop. A naive
+    # asyncio.run() there raises "cannot be called from a running event
+    # loop"; _run_sync must handle it by running on a separate thread.
+    async def call_from_within_a_loop():
+        return _run_sync(_return_42)
+
+    assert asyncio.run(call_from_within_a_loop()) == 42
+
+
+def test_run_sync_propagates_exceptions_raised_inside_an_event_loop():
+    async def _raise():
+        raise ValueError("boom")
+
+    async def call_from_within_a_loop():
+        return _run_sync(_raise)
+
+    with pytest.raises(ValueError, match="boom"):
+        asyncio.run(call_from_within_a_loop())
