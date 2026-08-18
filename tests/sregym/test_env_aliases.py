@@ -12,6 +12,8 @@ def _clear_azure_env(monkeypatch):
         "AZURE_OPENAI_API_KEY",
         "AZURE_OPENAI_BASE_URL",
         "AZURE_OPENAI_ENDPOINT",
+        "AZUREAI_API_KEY",
+        "AZUREAI_BASE_URL",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -44,3 +46,24 @@ def test_no_op_when_neither_var_style_is_set(monkeypatch):
 
     assert "AZURE_API_KEY" not in os.environ
     assert "AZURE_API_BASE" not in os.environ
+
+
+def test_also_mirrors_into_inspect_ai_azureai_provider_vars(monkeypatch):
+    _clear_azure_env(monkeypatch)
+    monkeypatch.setenv("AZUREAI_OPENAI_API_KEY", "inspect-key")
+    monkeypatch.setenv("AZUREAI_OPENAI_BASE_URL", "https://example.openai.azure.com")
+
+    mirror_azure_openai_env_aliases()
+
+    assert os.environ["AZUREAI_API_KEY"] == "inspect-key"
+    assert os.environ["AZUREAI_BASE_URL"] == "https://example.openai.azure.com"
+
+
+def test_does_not_override_an_explicitly_set_azureai_var(monkeypatch):
+    _clear_azure_env(monkeypatch)
+    monkeypatch.setenv("AZUREAI_API_KEY", "explicit-key")
+    monkeypatch.setenv("AZUREAI_OPENAI_API_KEY", "inspect-key")
+
+    mirror_azure_openai_env_aliases()
+
+    assert os.environ["AZUREAI_API_KEY"] == "explicit-key"

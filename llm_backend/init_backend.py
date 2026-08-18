@@ -26,11 +26,24 @@ def get_llm_backend_for_agent() -> LiteLLMBackend:
     )
 
 
-def get_llm_backend_for_judge() -> LiteLLMBackend:
-    """Get LLM backend for the LLM-as-a-judge evaluator."""
+def get_llm_backend_for_judge():
+    """Get LLM backend for the LLM-as-a-judge evaluator.
+
+    Set JUDGE_BACKEND=inspect_ai to resolve the judge model through
+    inspect_ai.model.get_model() instead of LiteLLM -- lets the judge use
+    the same model-string convention and credentials as an inspect_ai-based
+    agent. Default (unset) is unchanged LiteLLM behavior.
+    """
     model_id = os.environ.get("JUDGE_MODEL_ID")
     if not model_id:
         raise ValueError("JUDGE_MODEL_ID environment variable is not set.")
+
+    if os.environ.get("JUDGE_BACKEND") == "inspect_ai":
+        from llm_backend.inspect_ai_backend import InspectAIBackend
+
+        print(f"🔧 Initializing inspect_ai LLM backend for judge — model: {model_id}")
+        return InspectAIBackend(model_name=model_id)
+
     return get_llm_backend(
         model_id,
         api_base=os.environ.get("JUDGE_API_BASE"),
