@@ -1,16 +1,24 @@
 """Drop-in replacement for LiteLLMBackend's public interface, resolving
-models via inspect_ai.model.get_model() instead of LiteLLM.
+models via inspect_ai.model.get_model() -- but in a separate, ISOLATED
+environment (via `uv run --isolated --with`), not this process's own venv.
 
-Lets the judge use the exact same model-string convention and credential
-env vars as an inspect_ai-based agent (e.g. azureai/<deployment> for Azure),
-instead of LiteLLM's separate conventions and env vars.
+Why isolation: inspect_ai's "openai" provider requires openai>=3.1.0, but
+this project also depends on litellm, which hard-caps openai<3.0.0 in every
+released version -- the two genuinely cannot share one Python environment.
+Running the actual model call in an ephemeral, isolated environment
+sidesteps the conflict entirely: openai/azure/<deployment> model strings
+work exactly as inspect_ai documents them, with no need for a different
+provider convention (e.g. azureai/<deployment>) just to dodge this clash.
 """
 
-import asyncio
-import concurrent.futures
-from collections.abc import Awaitable, Callable
+import json
+import os
+import subprocess
+from pathlib import Path
 
-from inspect_ai.model import ChatMessageAssistant, ChatMessageSystem, ChatMessageUser, get_model
+_WORKER_SCRIPT = Path(__file__).parent / "_inspect_ai_judge_worker.py"
+_INSPECT_AI_SOURCE = "inspect-ai @ git+https://github.com/rufimelo99/inspect_ai.git"
+_WORKER_TIMEOUT_SECONDS = 120
 
 
 class _Response:
@@ -18,49 +26,57 @@ class _Response:
         self.content = content
 
 
-def _to_inspect_messages(messages, system_prompt):
+def _message_role(message) -> str:
+    cls_name = type(message).__name__
+    if cls_name == "SystemMessage":
+        return "system"
+    if cls_name == "HumanMessage":
+        return "user"
+    if cls_name == "AIMessage":
+        return "assistant"
+    raise TypeError(f"Unsupported message type: {type(message)}")
+
+
+def _to_plain_messages(messages, system_prompt):
     if isinstance(messages, str):
         result = []
         if system_prompt:
-            result.append(ChatMessageSystem(content=system_prompt))
-        result.append(ChatMessageUser(content=messages))
+            result.append({"role": "system", "content": system_prompt})
+        result.append({"role": "user", "content": messages})
         return result
 
-    result = []
-    for message in messages:
-        role = type(message).__name__
-        if role == "SystemMessage":
-            result.append(ChatMessageSystem(content=message.content))
-        elif role == "HumanMessage":
-            result.append(ChatMessageUser(content=message.content))
-        elif role == "AIMessage":
-            result.append(ChatMessageAssistant(content=message.content))
-        else:
-            raise TypeError(f"Unsupported message type: {type(message)}")
-    return result
+    return [{"role": _message_role(m), "content": m.content} for m in messages]
 
 
-def _run_sync[T](coro_factory: Callable[[], Awaitable[T]]) -> T:
-    """Run an async 0-arg callable to completion, whether called from a
-    plain sync context or from within an already-running event loop.
+def _call_isolated_worker(model_name: str, plain_messages: list[dict]) -> str:
+    payload = json.dumps({"model": model_name, "messages": plain_messages})
 
-    inference() is called from two very different places: SREGym's real
-    judge grading happens inside a ThreadPoolExecutor thread (Conductor
-    runs evaluation off its main event loop), where there's no running
-    loop and asyncio.run() works directly. But this same method is also
-    called from our own async preflight check, which runs *inside*
-    inspect_ai's event loop -- asyncio.run() there raises "cannot be
-    called from a running event loop". Detect which case we're in and,
-    for the latter, run the coroutine on a fresh loop in a separate
-    thread instead of trying to nest event loops.
-    """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro_factory())
+    result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "--isolated",
+            "--with",
+            _INSPECT_AI_SOURCE,
+            "--with",
+            "openai>=3.1.0",
+            "python",
+            str(_WORKER_SCRIPT),
+        ],
+        input=payload,
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
+        timeout=_WORKER_TIMEOUT_SECONDS,
+    )
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(lambda: asyncio.run(coro_factory())).result()
+    if not result.stdout.strip():
+        raise RuntimeError(f"Isolated inspect_ai worker produced no output (stderr: {result.stderr.strip()})")
+
+    response = json.loads(result.stdout)
+    if "error" in response:
+        raise RuntimeError(response["error"])
+    return response["completion"]
 
 
 class InspectAIBackend:
@@ -83,11 +99,6 @@ class InspectAIBackend:
         if tools:
             raise NotImplementedError("InspectAIBackend does not support tool-calling (unused by the judge).")
 
-        chat_messages = _to_inspect_messages(messages, system_prompt)
-
-        async def _generate():
-            model = get_model(self.model_name)
-            return await model.generate(chat_messages)
-
-        output = _run_sync(_generate)
-        return _Response(output.completion)
+        plain_messages = _to_plain_messages(messages, system_prompt)
+        completion = _call_isolated_worker(self.model_name, plain_messages)
+        return _Response(completion)
