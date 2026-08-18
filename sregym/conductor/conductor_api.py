@@ -174,6 +174,18 @@ async def get_app():
     }
 
 
+@app.get("/results")
+async def get_results():
+    if _conductor is None:
+        logger.error("No problem has been started")
+        raise HTTPException(status_code=400, detail="No problem has been started")
+    results = dict(_conductor.results)
+    results["problem_id"] = _conductor.problem_id
+    results["stage"] = _conductor.submission_stage
+    logger.debug(f"API returns results: {results}")
+    return results
+
+
 def run_api(conductor):
     """
     Start the API server and block until request_shutdown() is called.
@@ -196,6 +208,7 @@ def run_api(conductor):
 **Available Endpoints**
 - **POST /submit**: `{ "solution": "<your-solution>" }` → grades the current stage
 - **GET /status**: returns `{ "stage": "setup" | "diagnosis" | "mitigation" | "tearing_down" | "done" }`
+- **GET /results**: returns the current problem's graded results (`Diagnosis`, `Mitigation`, `TTL`, `TTM`, `problem_id`, `stage`)
 """
         )
     )
