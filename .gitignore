@@ -254,3 +254,4 @@ resolve-values.yaml
 # inspectai agent lives in the sibling MSFT_SRE repo and is symlinked in here
 # locally (see clients/inspectai) rather than committed to this fork.
 /clients/inspectai
+/sregym/observer/prometheus/prometheus/tmpcharts**

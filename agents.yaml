@@ -62,7 +62,9 @@ agents:
     agent_version: null
     container_isolation: false
   - name: inspectai
-    kickoff_command: python -m clients.inspectai.driver
+    # Runs via its own isolated venv (built by install-inspectai.sh), not
+    # the container's global python -- see that script for why.
+    kickoff_command: /opt/inspectai-venv/bin/python -m clients.inspectai.driver
     kickoff_workdir: .
     kickoff_env: null
     install_script: install-inspectai.sh

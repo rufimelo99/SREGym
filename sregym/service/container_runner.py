@@ -77,6 +77,11 @@ class ContainerRunner:
         # Azure OpenAI
         "AZURE_API_KEY",
         "AZURE_OPENAI_API_KEY",
+        # inspect_ai's own "openai" provider (used via its isolated venv by
+        # the inspectai agent -- see install-inspectai.sh) reads these two
+        # exact names directly, ahead of the AZURE_OPENAI_* ones above.
+        "AZUREAI_OPENAI_API_KEY",
+        "AZUREAI_OPENAI_BASE_URL",
         "AZURE_API_BASE",
         "AZURE_API_VERSION",
         "AZURE_AD_TOKEN",
